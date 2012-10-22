@@ -296,7 +296,7 @@ class MLM():
                 # which may contain multiple addresses, so we need to Iterate.
                 try:
                     for to in r.findall(msg.get("To")):
-                        if list_isvalid(to):
+                        if self.list_isvalid(to):
                             matched = True
                             continue
                 except TypeError:
@@ -305,7 +305,7 @@ class MLM():
                 # If the To: header is no mas, try searching the Cc: header
                 try:
                     for to in r.findall(msg.get("Cc")):
-                        if list_isvalid(to):
+                        if self.list_isvalid(to):
                             matched = True
                             continue
                 except TypeError:
@@ -313,7 +313,7 @@ class MLM():
 
                 # If that fails then fall back to the X-Original-To header.
                 to = msg.get("X-Original-To")
-                if not matched and list_isvalid(to):
+                if not matched and self.list_isvalid(to):
                     matched = True
                     continue
 
