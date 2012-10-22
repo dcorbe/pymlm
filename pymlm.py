@@ -355,6 +355,9 @@ if __name__== "__main__":
     parser.add_argument('-n',
                         metavar='<list>',
                         help='Create list with -d(ecription, optional) -a (owned by, mandatory)')
+    parser.add_argument('-d',
+                        metavar='<description>',
+                        help='List Description')
     args = parser.parse_args()
 
     mlm = MLM(args.c)
@@ -373,6 +376,14 @@ if __name__== "__main__":
             raise ValueError()
 
         mlm.add_subscriber(args.s, args.a)
+        sys.exit()
+
+    if args.n:
+        if not args.a:
+            print "Must supply the -a(ddress) argument with -s"
+            raise ValueError()
+
+        mlm.add_list(args.n, args.a, args.d)
         sys.exit()
 
     mlm.crawl_imap()
