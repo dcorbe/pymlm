@@ -1,0 +1,8 @@
+[general]
+imap_server = imap.somehost.com
+imap_port = 143
+imap_user = lists
+imap_pass = xxYYzz
+smtp_server = mail.somehost.com
+expunge = true
+delimiter = -
