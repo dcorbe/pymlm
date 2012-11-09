@@ -303,19 +303,21 @@ class MLM():
                     pass
 
                 # If the To: header is no mas, try searching the Cc: header
-                try:
-                    for to in r.findall(msg.get("Cc")):
-                        if self.list_isvalid(to):
-                            matched = True
-                            continue
-                except TypeError:
-                    pass
+                if not matched:
+                    try:
+                        for to in r.findall(msg.get("Cc")):
+                            if self.list_isvalid(to):
+                                matched = True
+                                continue
+                    except TypeError:
+                        pass
 
                 # If that fails then fall back to the X-Original-To header.
-                to = msg.get("X-Original-To")
-                if not matched and self.list_isvalid(to):
-                    matched = True
-                    continue
+                if not matched:
+                    to = msg.get("X-Original-To")
+                    if not matched and self.list_isvalid(to):
+                        matched = True
+                        continue
 
                 # Finally give up and bounce the message
                 if not matched:
