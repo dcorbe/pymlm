@@ -319,11 +319,11 @@ class MLM():
 
                 # Finally give up and bounce the message
                 if not matched:
-                    bounce_nolist(msg)
+                    self.bounce_nolist(msg)
                     break
 
             if matched and not request:    
-                process_msg(msg, to)
+                self.process_msg(msg, to)
 
 
         # Step four: expunge processed messages
