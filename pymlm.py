@@ -43,7 +43,7 @@ class MLM():
         self.config.read(config)
         self.configfile = config
 
-    def list_isvalid(self, config, address):
+    def list_isvalid(self, address):
         if self.config.has_section(address):
             return True
         else:
