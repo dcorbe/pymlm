@@ -35,7 +35,7 @@
 #
 
 import email, imaplib, smtplib, re, sys, argparse, string, random, textwrap
-from ConfigParser import SafeConfigParser, NoSectionError
+from ConfigParser import SafeConfigParser, NoSectionError, NoOptionError
 
 class MLM():
     def __init__(self, config):
@@ -84,6 +84,89 @@ class MLM():
             print "\tForwarding E-Mail to: {0}".format(subscriber)
             smtp = smtplib.SMTP(self.config.get('general', 'smtp_server'))
             smtp.sendmail(to, subscriber, msg.as_string())
+
+    def add_moderator(self, listaddr, address):
+        #
+        # First check to see if the list exists
+        #
+        try:
+            moderators = self.config.get(listaddr, 'moderators').split(', ')
+        except NoSectionError:
+            raise NameError('Requested list does not exist: {0}'.format(listaddr))
+        except NoOptionError:
+            self.config.set(listaddr, 'moderators', address)
+            f = open(self.configfile, 'w')
+            f.truncate()
+            self.config.write(f)
+            f.close()
+            return True
+
+        #
+        # Check to see if the subscriber is already on the list
+        #
+        for moderator in moderators:
+            if moderator == address:
+                raise ValueError('User {0] already moderator on {1}'.format(
+                        address, listaddr))
+
+        #
+        # All good.  Reconstruct the moderatorss field and save the config
+        #
+        moderators.append(address)
+        self.config.set(listaddr, 'moderators', ', '.join(moderators))
+        f = open(self.configfile, 'w')
+        f.truncate()
+        self.config.write(f)
+        f.close()
+        return True
+
+    def rm_moderator(self, listaddr, address):
+        #
+        # First check to see if the list exists
+        #
+        try:
+            moderators = self.config.get(listaddr, 'moderators').split(', ')
+        except NoSectionError:
+            raise NameError('Requested list does not exist: {0}'.format(listaddr))
+        except NoOptionError:
+            self.config.set(listaddr, 'moderators', '')
+            moderators = self.config.get(listaddr, 'moderators').split(', ')
+        
+        #
+        # Check to see if the subscriber is already on the list
+        #
+        for moderator in moderators:
+            if moderator == address:
+                moderators.remove(moderator)
+                self.config.set(listaddr, 'moderators', ', '.join(moderators))
+                f = open(self.configfile, 'w')
+                f.truncate()
+                self.config.write(f)
+                f.close()
+                return True
+
+        raise ValueError('User {0} is not a moderator on {1}'.format(
+                address, listaddr))
+
+    def is_moderator(self, listaddr, address):
+        #
+        # First check to see if the list exists
+        #
+        try:
+            moderators = self.config.get(listaddr, 'moderators').split(', ')
+        except NoSectionError:
+            raise NameError('Requested list does not exist: {0}'.format(listaddr))
+        except NoOptionError:
+            return False
+        
+        #
+        # Check to see if the subscriber is already on the list
+        #
+        for moderator in moderators:
+            if moderator == address:
+                return True
+
+        return False
 
     def add_subscriber(self, listaddr, address):
         #
@@ -138,7 +221,7 @@ class MLM():
         raise ValueError('User {0} is not subscribed to {1}'.format(
                 address, listaddr))
 
-    def add_list(self, listaddr, owner, description=None):
+    def add_list(self, listaddr, owner, description=None, moderated=None):
         try:
             subscribers = self.config.get(listaddr, 'subscribers').split(', ')
             raise NameError('List already exists')
@@ -162,6 +245,9 @@ class MLM():
                             '.pymlm.' +
                             host + '>')
         self.config.set(listaddr, 'subscribers', owner)
+
+        if moderated:
+            self.config.set(listaddr, 'moderated', 'true')
 
         # Write config to disk
         f = open(self.configfile, 'w')
@@ -324,9 +410,55 @@ class MLM():
                     self.bounce_nolist(msg)
                     break
 
-            if matched and not request:    
-                self.process_msg(msg, to)
+            # List processing.
+            if matched and not request:
+                moderated = self.config.get(to, 'moderated')
+                if moderated == "true":
 
+                    # Check to see if the mail is from a list moderator
+                    processed = 0
+                    for mailfrom in r.findall(msg.get('From')):
+                        if self.is_moderator(to, mailfrom):
+                            processed = 1
+                            self.process_msg(msg, to)
+                    
+                    # 
+                    # A reply to an existing message.  Process.
+                    #
+                    # FIXME: what the fuck.
+                    #
+                    if not processed:
+                        lreply = msg.get('In-Reply-To')
+                        if lreply:
+                            for stupid in r.findall(lreply):
+                                if stupid:
+                                    processed = 1
+                                    self.process_msg(msg, to)
+                            
+                    # Not a moderator or a reply, bounce.
+                    if not processed:
+                        ofrom = r.findall(msg.get("From"))[0]
+                        reply = textwrap.dedent('''\
+                        From: {1}-request@{2}
+                        To: {3}
+                        Reply-To: {1}-subscribe@{2}
+                        Subject: Your E-Mail to {1}@{2}
+
+                        Dear User,
+                        
+			You attempted to send an E-Mail to a moderated list.
+			Your E-Mail has not been delivered.  For help please
+			contact the list owner.
+                        necessary.'''.format(host, user, host, ofrom))
+
+                        smtp = smtplib.SMTP(self.config.get('general', 'smtp_server'))
+                        smtp.sendmail('{0}-request@{1}'.format(user, host), 
+                                  '{0}'.format(ofrom), 
+                                  reply)
+
+                        
+                else:
+                    self.process_msg(msg, to)
 
         # Step four: expunge processed messages
         expunge = self.config.get('general', 'expunge')
@@ -360,9 +492,25 @@ if __name__== "__main__":
     parser.add_argument('-d',
                         metavar='<description>',
                         help='List Description')
+    parser.add_argument('-m', action='store_true',
+                        help='List should be moderated')
+    parser.add_argument('-r',
+                        metavar='<moderator>',
+                        help='Remove moderator from list')
+    parser.add_argument('-e',
+                        metavar='<moderator>',
+                        help='Add moderator to list')
+    parser.add_argument('-l',
+                        metavar='<list>',
+                        help='Moderator management for <list>')
     args = parser.parse_args()
 
     mlm = MLM(args.c)
+
+    if args.m:
+        if not args.n:
+            print "-m option only available on new lists"
+            raise ValueError()
 
     if args.u:
         if not args.a:
@@ -385,7 +533,23 @@ if __name__== "__main__":
             print "Must supply the -a(ddress) argument with -s"
             raise ValueError()
 
-        mlm.add_list(args.n, args.a, args.d)
+        mlm.add_list(args.n, args.a, args.d, args.m)
+        sys.exit()
+
+    if args.r:
+        if not args.l:
+            print "Must supply a list (-l) to manage moderators"
+            raise ValueError()
+
+        mlm.rm_moderator(args.l, args.r)
+        sys.exit()
+
+    if args.e:
+        if not args.l:
+            print "Must supply a list (-l) to manage moderators"
+            raise ValueError()
+
+        mlm.add_moderator(args.l, args.e)
         sys.exit()
 
     mlm.crawl_imap()
