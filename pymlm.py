@@ -412,7 +412,11 @@ class MLM():
 
             # List processing.
             if matched and not request:
-                moderated = self.config.get(to, 'moderated')
+                try:
+                    moderated = self.config.get(to, 'moderated')
+                except:
+                    moderated = "false"
+
                 if moderated == "true":
 
                     # Check to see if the mail is from a list moderator
