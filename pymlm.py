@@ -307,7 +307,7 @@ class MLM():
             if request:
                 # Stops the while loop below from running
                 # without ceasing execution entirely so that
-                # cleanup (like expunging messages) can stipp
+                # cleanup (like expunging messages) can still
                 # happen later.
                 matched = True
 
@@ -384,7 +384,7 @@ class MLM():
                     for to in r.findall(msg.get("To")):
                         if self.list_isvalid(to):
                             matched = True
-                            continue
+                            break
                 except TypeError:
                     pass
 
@@ -394,7 +394,7 @@ class MLM():
                         for to in r.findall(msg.get("Cc")):
                             if self.list_isvalid(to):
                                 matched = True
-                                continue
+                                break
                     except TypeError:
                         pass
 
