@@ -44,7 +44,7 @@ class MLM():
         self.configfile = config
 
     def list_isvalid(self, address):
-        if self.config.has_section(address):
+        if self.config.has_section(address.lower()):
             return True
         else:
             return False
@@ -297,8 +297,12 @@ class MLM():
             # aliases, we need to apply special processing.
             #
             # FIXME we only support the first To: address for processing requests
-            to = r.findall(msg.get("To"))[0]
-            user, host = to.split('@')
+            try:
+                to = r.findall(msg.get("To"))[0]
+                user, host = to.split('@')
+            except:
+                continue
+
             try:
                 user, request = user.split('-')
             except ValueError:
