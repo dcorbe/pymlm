@@ -65,7 +65,7 @@ class MLM():
         #
         # Add necessary headers to the E-Mail message
         #
-        msg.add_header('List-Id', self.config.get(to, 'listid'))
+        msg.add_header('List-Id', self.config.get(to.lower() , 'listid'))
         msg.add_header('List-Help', 
                        '{0}-help@{1}'.format(user, host))
         msg.add_header('List-Subscribe',
@@ -75,15 +75,33 @@ class MLM():
         msg.add_header('List-Post',
                        '{0}@{1}'.format(user, host))
         msg.add_header('List-Owner',
-                       self.config.get(to, 'owner'))
-        #msg.add_header('Reply-To', to)
+                       self.config.get(to.lower(), 'owner'))
+
+        try:
+            replyto = self.config.get(to, reply-to)
+        except:
+            replyto = None
+
+        if replyto:
+            msg.add_header('Reply-To', replyto)
 
         # Relay the message to all the list subscribers
-        subscribers = self.config.get(to, 'subscribers').split(', ')
+        try:
+            mirror = self.config.get(to.lower(), 'mirror')
+            subscribers = self.config.get(mirror.lower(), 'subscribers').split(', ')
+        except:
+            subscribers = self.config.get(to.lower(), 'subscribers').split(', ')
+            
         for subscriber in subscribers:
             print "\tForwarding E-Mail to: {0}".format(subscriber)
             smtp = smtplib.SMTP(self.config.get('general', 'smtp_server'))
-            smtp.sendmail(to, subscriber, msg.as_string())
+
+            try:
+                forcefrom = self.config.get(to.lower(), 'from')
+            except:
+                forcefrom = to
+                
+            smtp.sendmail(forcefrom, subscriber, msg.as_string())
 
     def add_moderator(self, listaddr, address):
         #
@@ -304,7 +322,7 @@ class MLM():
                 continue
 
             try:
-                user, request = user.split('-')
+                user, request = user.split(self.config.get('general', 'delimiter'))
             except ValueError:
                 request = None
 
@@ -381,92 +399,92 @@ class MLM():
             # This would be alot cleaner if the Python people weren't
             # so allergic to GOTO.  C'est la vie I suppose.
             #
-            while not matched:
-                # Try determining the list address from the To: header
-                # which may contain multiple addresses, so we need to Iterate.
-                try:
-                    for to in r.findall(msg.get("To")):
-                        if self.list_isvalid(to):
-                            matched = True
-                            break
-                except TypeError:
-                    pass
 
-                # If the To: header is no mas, try searching the Cc: header
-                if not matched:
-                    try:
-                        for to in r.findall(msg.get("Cc")):
-                            if self.list_isvalid(to):
-                                matched = True
-                                break
-                    except TypeError:
-                        pass
-
-                # If that fails then fall back to the X-Original-To header.
-                if not matched:
-                    to = msg.get("X-Original-To")
-                    if not matched and self.list_isvalid(to):
+            # Try determining the list address from the To: header
+            # which may contain multiple addresses, so we need to Iterate.
+            try:
+                for to in r.findall(msg.get("To")):
+                    if self.list_isvalid(to):
                         matched = True
-                        continue
+                        if not request:
+                            self.process_msg(msg, to)
+                            continue
+            except TypeError:
+                pass
 
-                # Finally give up and bounce the message
-                if not matched:
-                    self.bounce_nolist(msg)
-                    break
+            # If the To: header is no mas, try searching the Cc: header
+            try:
+                for to in r.findall(msg.get("Cc")):
+                    if self.list_isvalid(to):
+                        matched = True
+                        if not request:
+                            self.process_msg(msg, to)
+                            continue
+            except TypeError:
+                pass
+
+            # If that fails then fall back to the X-Original-To header.
+            # if not matched:
+            #     to = msg.get("X-Original-To")
+            #     if not matched and self.list_isvalid(to):
+            #         matched = True
+            #         #self.process_msg(msg, to)
+
+            # Finally give up and bounce the message
+            if not matched:
+                self.bounce_nolist(msg)
+                break
 
             # List processing.
-            if matched and not request:
-                try:
-                    moderated = self.config.get(to, 'moderated')
-                except:
-                    moderated = "false"
+            #if matched and not request:
+                # TODO: FIXME
+                # try:
+                #     moderated = self.config.get(to.lower() , 'moderated')
+                # except:
+                #     moderated = "false"
 
-                if moderated == "true":
+                # if moderated == "true":
 
-                    # Check to see if the mail is from a list moderator
-                    processed = 0
-                    for mailfrom in r.findall(msg.get('From')):
-                        if self.is_moderator(to, mailfrom):
-                            processed = 1
-                            self.process_msg(msg, to)
+                #     # Check to see if the mail is from a list moderator
+                #     processed = 0
+                #     for mailfrom in r.findall(msg.get('From')):
+                #         if self.is_moderator(to, mailfrom):
+                #             processed = 1
+                #             self.process_msg(msg, to)
                     
-                    # 
-                    # A reply to an existing message.  Process.
-                    #
-                    # FIXME: what the fuck.
-                    #
-                    if not processed:
-                        lreply = msg.get('In-Reply-To')
-                        if lreply:
-                            for stupid in r.findall(lreply):
-                                if stupid:
-                                    processed = 1
-                                    self.process_msg(msg, to)
+                #     # 
+                #     # A reply to an existing message.  Process.
+                #     #
+                #     # FIXME: what the fuck.
+                #     #
+                #     if not processed:
+                #         lreply = msg.get('In-Reply-To')
+                #         if lreply:
+                #             for stupid in r.findall(lreply):
+                #                 if stupid:
+                #                     processed = 1
+                #                     self.process_msg(msg, to)
                             
                     # Not a moderator or a reply, bounce.
-                    if not processed:
-                        ofrom = r.findall(msg.get("From"))[0]
-                        reply = textwrap.dedent('''\
-                        From: {1}-request@{2}
-                        To: {3}
-                        Reply-To: {1}-subscribe@{2}
-                        Subject: Your E-Mail to {1}@{2}
+                    # if not processed:
+                    #     ofrom = r.findall(msg.get("From"))[0]
+                    #     reply = textwrap.dedent('''\
+                    #     From: {1}-request@{2}
+                    #     To: {3}
+                    #     Reply-To: {1}-subscribe@{2}
+                    #     Subject: Your E-Mail to {1}@{2}
 
-                        Dear User,
+                    #     Dear User,
                         
-			You attempted to send an E-Mail to a moderated list.
-			Your E-Mail has not been delivered.  For help please
-			contact the list owner.
-                        necessary.'''.format(host, user, host, ofrom))
+		    #     You attempted to send an E-Mail to a moderated list.
+		    #     Your E-Mail has not been delivered.  For help please
+		    #     contact the list owner.
+                    #     necessary.'''.format(host, user, host, ofrom))
 
-                        smtp = smtplib.SMTP(self.config.get('general', 'smtp_server'))
-                        smtp.sendmail('{0}-request@{1}'.format(user, host), 
-                                  '{0}'.format(ofrom), 
-                                  reply)
-
-                        
-                else:
-                    self.process_msg(msg, to)
+                    #     smtp = smtplib.SMTP(self.config.get('general', 'smtp_server'))
+                    #     smtp.sendmail('{0}-request@{1}'.format(user, host), 
+                    #               '{0}'.format(ofrom), 
+                    #               reply)
 
         # Step four: expunge processed messages
         expunge = self.config.get('general', 'expunge')
